@@ -11,6 +11,7 @@
     "deploy-commands": "export NODE_ENV=development && tsx src/bot/deploy.ts"
   },
   "dependencies": {
+    "@discordjs/voice": "^0.19.2",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "cookie-parser": "^1.4.7",
