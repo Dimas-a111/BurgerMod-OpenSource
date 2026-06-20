@@ -3,7 +3,7 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  GuildMember,
+  TextChannel,
 } from "discord.js";
 
 export const commands = [
@@ -23,27 +23,42 @@ export const commands = [
         await interaction.reply({ content: "You don't have permission to ban members.", ephemeral: true });
         return;
       }
-      const target = interaction.options.getMember("user") as GuildMember;
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      const user = interaction.options.getUser("user", true);
       const reason = interaction.options.getString("reason") ?? "No reason provided";
-      if (!target) {
-        await interaction.reply({ content: "User not found.", ephemeral: true });
+
+      let member;
+      try {
+        member = await guild.members.fetch(user.id);
+      } catch {
+        await interaction.editReply("That user is not in this server.");
         return;
       }
-      if (!target.bannable) {
-        await interaction.reply({ content: "I cannot ban this user.", ephemeral: true });
+
+      if (!member.bannable) {
+        await interaction.editReply("I cannot ban this user. They may have a higher role than me.");
         return;
       }
-      await target.ban({ reason });
+
+      await member.ban({ reason });
       const embed = new EmbedBuilder()
         .setTitle("Member Banned")
         .setColor(0xed4245)
         .addFields(
-          { name: "User", value: `${target.user.tag}`, inline: true },
+          { name: "User", value: `${user.tag} (${user.id})`, inline: true },
           { name: "Reason", value: reason, inline: true }
         );
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed] });
     },
   },
+
   {
     data: new SlashCommandBuilder()
       .setName("kick")
@@ -60,27 +75,42 @@ export const commands = [
         await interaction.reply({ content: "You don't have permission to kick members.", ephemeral: true });
         return;
       }
-      const target = interaction.options.getMember("user") as GuildMember;
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
+        return;
+      }
+
+      await interaction.deferReply();
+
+      const user = interaction.options.getUser("user", true);
       const reason = interaction.options.getString("reason") ?? "No reason provided";
-      if (!target) {
-        await interaction.reply({ content: "User not found.", ephemeral: true });
+
+      let member;
+      try {
+        member = await guild.members.fetch(user.id);
+      } catch {
+        await interaction.editReply("That user is not in this server.");
         return;
       }
-      if (!target.kickable) {
-        await interaction.reply({ content: "I cannot kick this user.", ephemeral: true });
+
+      if (!member.kickable) {
+        await interaction.editReply("I cannot kick this user. They may have a higher role than me.");
         return;
       }
-      await target.kick(reason);
+
+      await member.kick(reason);
       const embed = new EmbedBuilder()
         .setTitle("Member Kicked")
         .setColor(0xfee75c)
         .addFields(
-          { name: "User", value: `${target.user.tag}`, inline: true },
+          { name: "User", value: `${user.tag} (${user.id})`, inline: true },
           { name: "Reason", value: reason, inline: true }
         );
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed] });
     },
   },
+
   {
     data: new SlashCommandBuilder()
       .setName("timeout")
@@ -105,25 +135,44 @@ export const commands = [
         await interaction.reply({ content: "You don't have permission to timeout members.", ephemeral: true });
         return;
       }
-      const target = interaction.options.getMember("user") as GuildMember;
-      const duration = interaction.options.getInteger("duration", true);
-      const reason = interaction.options.getString("reason") ?? "No reason provided";
-      if (!target) {
-        await interaction.reply({ content: "User not found.", ephemeral: true });
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.reply({ content: "This command can only be used in a server.", ephemeral: true });
         return;
       }
-      await target.timeout(duration * 60 * 1000, reason);
+
+      await interaction.deferReply();
+
+      const user = interaction.options.getUser("user", true);
+      const duration = interaction.options.getInteger("duration", true);
+      const reason = interaction.options.getString("reason") ?? "No reason provided";
+
+      let member;
+      try {
+        member = await guild.members.fetch(user.id);
+      } catch {
+        await interaction.editReply("That user is not in this server.");
+        return;
+      }
+
+      if (!member.moderatable) {
+        await interaction.editReply("I cannot timeout this user. They may have a higher role than me.");
+        return;
+      }
+
+      await member.timeout(duration * 60 * 1000, reason);
       const embed = new EmbedBuilder()
         .setTitle("Member Timed Out")
         .setColor(0xfee75c)
         .addFields(
-          { name: "User", value: `${target.user.tag}`, inline: true },
-          { name: "Duration", value: `${duration} minutes`, inline: true },
+          { name: "User", value: `${user.tag} (${user.id})`, inline: true },
+          { name: "Duration", value: `${duration} minute(s)`, inline: true },
           { name: "Reason", value: reason }
         );
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed] });
     },
   },
+
   {
     data: new SlashCommandBuilder()
       .setName("clear")
@@ -142,16 +191,19 @@ export const commands = [
         await interaction.reply({ content: "You don't have permission to manage messages.", ephemeral: true });
         return;
       }
+
       const amount = interaction.options.getInteger("amount", true);
-      if (!interaction.channel || !("bulkDelete" in interaction.channel)) {
-        await interaction.reply({ content: "Cannot delete messages in this channel.", ephemeral: true });
+      const channel = interaction.channel;
+
+      if (!channel || !(channel instanceof TextChannel)) {
+        await interaction.reply({ content: "This command can only be used in a text channel.", ephemeral: true });
         return;
       }
-      const deleted = await interaction.channel.bulkDelete(amount, true);
-      await interaction.reply({
-        content: `Deleted **${deleted.size}** message(s).`,
-        ephemeral: true,
-      });
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const deleted = await channel.bulkDelete(amount, true);
+      await interaction.editReply(`Deleted **${deleted.size}** message(s).`);
     },
   },
 ];
