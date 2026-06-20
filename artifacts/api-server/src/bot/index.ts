@@ -62,24 +62,32 @@ client.once(Events.ClientReady, async (readyClient) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  logger.info({ name: interaction.commandName }, "Command received");
+
   const command = commandCollection.get(interaction.commandName);
   if (!command) {
-    logger.warn({ name: interaction.commandName }, "Unknown command received");
+    logger.warn({ name: interaction.commandName }, "Unknown command — not in collection");
+    await interaction.reply({ content: "Unknown command.", ephemeral: true });
     return;
   }
 
   try {
     await command.execute(interaction);
+    logger.info({ name: interaction.commandName }, "Command completed");
   } catch (err) {
-    logger.error({ err, command: interaction.commandName }, "Command error");
+    logger.error({ err, command: interaction.commandName, stack: (err as Error).stack }, "Command error");
     const reply = {
-      content: "There was an error running this command.",
+      content: `Error in /${interaction.commandName}: ${(err as Error).message}`,
       ephemeral: true,
     };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(reply);
-    } else {
-      await interaction.reply(reply);
+    try {
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp(reply);
+      } else {
+        await interaction.reply(reply);
+      }
+    } catch (replyErr) {
+      logger.error({ replyErr }, "Failed to send error reply");
     }
   }
 });
