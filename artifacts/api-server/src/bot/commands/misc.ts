@@ -9,7 +9,14 @@ import {
   ButtonStyle,
   ChannelType,
 } from "discord.js";
+import OpenAI from "openai";
 import { afkStore, birthdays, giveaways, getConfig, trackedUsers } from "../store";
+
+function getOpenAI(): OpenAI | null {
+  const key = process.env["OPENAI_API_KEY"];
+  if (!key) return null;
+  return new OpenAI({ apiKey: key });
+}
 
 const ROASTS = [
   "You're the reason shampoo has instructions.",
@@ -325,7 +332,30 @@ export const commands = [
       .addStringOption((o) => o.setName("message").setDescription("Your message").setRequired(true)),
     async execute(interaction: ChatInputCommandInteraction) {
       const message = interaction.options.getString("message", true);
-      await interaction.reply(`🤖 **You:** ${message}\n\n> To enable real AI responses, add an \`OPENAI_API_KEY\` secret and integrate OpenAI in the bot code.`);
+      const ai = getOpenAI();
+      if (!ai) {
+        await interaction.reply({ content: "❌ `OPENAI_API_KEY` secret is not set.", ephemeral: true });
+        return;
+      }
+      await interaction.deferReply();
+      try {
+        const completion = await ai.chat.completions.create({
+          model: "gpt-4o-mini",
+          max_tokens: 1024,
+          messages: [
+            { role: "system", content: "You are BurgerMod, a helpful and friendly Discord bot. Keep replies concise (under 1800 characters)." },
+            { role: "user", content: message },
+          ],
+        });
+        const reply = completion.choices[0]?.message?.content ?? "No response.";
+        const embed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setDescription(reply.slice(0, 4096))
+          .setFooter({ text: `Asked by ${interaction.user.tag}` });
+        await interaction.editReply({ embeds: [embed] });
+      } catch (err: unknown) {
+        await interaction.editReply(`❌ AI error: ${(err as Error).message}`);
+      }
     },
   },
 
@@ -336,7 +366,31 @@ export const commands = [
       .addStringOption((o) => o.setName("prompt").setDescription("Image description").setRequired(true)),
     async execute(interaction: ChatInputCommandInteraction) {
       const prompt = interaction.options.getString("prompt", true);
-      await interaction.reply(`🎨 To generate images for **"${prompt}"**, add an \`OPENAI_API_KEY\` secret — the bot will use DALL-E to create real images.`);
+      const ai = getOpenAI();
+      if (!ai) {
+        await interaction.reply({ content: "❌ `OPENAI_API_KEY` secret is not set.", ephemeral: true });
+        return;
+      }
+      await interaction.deferReply();
+      try {
+        const response = await ai.images.generate({
+          model: "dall-e-3",
+          prompt,
+          n: 1,
+          size: "1024x1024",
+        });
+        const url = (response.data ?? [])[0]?.url;
+        if (!url) { await interaction.editReply("❌ No image returned."); return; }
+        const embed = new EmbedBuilder()
+          .setTitle("🎨 Generated Image")
+          .setDescription(`**Prompt:** ${prompt}`)
+          .setImage(url)
+          .setColor(0xff73fa)
+          .setFooter({ text: `Requested by ${interaction.user.tag}` });
+        await interaction.editReply({ embeds: [embed] });
+      } catch (err: unknown) {
+        await interaction.editReply(`❌ Image error: ${(err as Error).message}`);
+      }
     },
   },
 
