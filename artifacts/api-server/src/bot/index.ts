@@ -13,6 +13,7 @@ import { logger } from "../lib/logger";
 import { commands as utilityCommands } from "./commands/utility";
 import { commands as moderationCommands } from "./commands/moderation";
 import { commands as funCommands } from "./commands/fun";
+import { commands as rolesCommands } from "./commands/roles";
 
 interface Command {
   data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
@@ -34,6 +35,7 @@ const allCommands: Command[] = [
   ...utilityCommands,
   ...moderationCommands,
   ...funCommands,
+  ...rolesCommands,
 ];
 
 for (const command of allCommands) {
