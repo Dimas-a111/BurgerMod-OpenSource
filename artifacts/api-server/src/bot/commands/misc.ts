@@ -316,12 +316,58 @@ export const commands = [
   {
     data: new SlashCommandBuilder()
       .setName("roast")
-      .setDescription("Roast someone for fun")
+      .setDescription("Roast someone for fun using AI")
       .addUserOption((o) => o.setName("user").setDescription("User to roast").setRequired(true)),
     async execute(interaction: ChatInputCommandInteraction) {
       const user = interaction.options.getUser("user", true);
-      const roast = pick(ROASTS);
-      await interaction.reply(`${user}, ${roast}`);
+      const member = interaction.guild?.members.cache.get(user.id);
+      const ai = getOpenAI();
+
+      if (!ai) {
+        // fallback to static roasts if no API key
+        await interaction.reply(`${user} ${pick(ROASTS)}`);
+        return;
+      }
+
+      await interaction.deferReply();
+
+      const joinedAt = member?.joinedAt
+        ? `joined the server on ${member.joinedAt.toDateString()}`
+        : "a server member";
+      const roles = member?.roles.cache
+        .filter((r) => r.name !== "@everyone")
+        .map((r) => r.name)
+        .slice(0, 5)
+        .join(", ") || "no roles";
+      const nickname = member?.nickname ?? user.displayName;
+
+      try {
+        const completion = await ai.chat.completions.create({
+          model: "gpt-4o-mini",
+          max_tokens: 200,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a savage but playful roast bot. Write ONE short, witty, personalized roast (2-3 sentences max). Use the user details provided. Keep it funny, not mean-spirited. Do not use slurs or anything truly offensive.",
+            },
+            {
+              role: "user",
+              content: `Roast this Discord user: username is "${user.username}", display name is "${nickname}", they ${joinedAt}, and their roles are: ${roles}. Make the roast feel personal using these details.`,
+            },
+          ],
+        });
+
+        const roast = completion.choices[0]?.message?.content ?? pick(ROASTS);
+        const embed = new EmbedBuilder()
+          .setColor(0xed4245)
+          .setDescription(`🔥 ${user} — ${roast}`)
+          .setFooter({ text: `Roasted by ${interaction.user.tag}` });
+
+        await interaction.editReply({ embeds: [embed] });
+      } catch {
+        await interaction.editReply(`${user} ${pick(ROASTS)}`);
+      }
     },
   },
 
