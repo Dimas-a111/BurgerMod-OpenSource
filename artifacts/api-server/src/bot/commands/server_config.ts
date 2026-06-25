@@ -6,6 +6,9 @@ import {
   ChannelType,
   TextChannel,
   CategoryChannel,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } from "discord.js";
 import { getConfig, reactionRoles, ticketCategories } from "../store";
 
@@ -330,6 +333,84 @@ export const commands = [
         ]
       });
       await interaction.editReply(`✅ Your ticket has been created: <#${ticketChannel.id}>`);
+    },
+  },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("anti_nsfw")
+      .setDescription("Enable or disable AI-powered NSFW image detection")
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+      .addBooleanOption((o) => o.setName("enabled").setDescription("Enable or disable").setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({ content: "Admins only.", ephemeral: true }); return;
+      }
+      const enabled = interaction.options.getBoolean("enabled", true);
+      const cfg = getConfig(interaction.guildId!);
+      cfg.antiNsfw = enabled;
+      await interaction.reply(
+        enabled
+          ? "🔞 **Anti-NSFW enabled.** Image attachments will be scanned by AI and deleted if flagged."
+          : "❌ **Anti-NSFW disabled.**"
+      );
+    },
+  },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("setup_verify")
+      .setDescription("Set up a verification system for new members")
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+      .addChannelOption((o) => o.setName("channel").setDescription("Channel to post the verification message").setRequired(true).addChannelTypes(ChannelType.GuildText))
+      .addRoleOption((o) => o.setName("role").setDescription("Role to give upon verification").setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        await interaction.reply({ content: "Admins only.", ephemeral: true }); return;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      const channel = interaction.options.getChannel("channel", true);
+      const role = interaction.options.getRole("role", true);
+      const cfg = getConfig(interaction.guildId!);
+      cfg.verifyRoleId = role.id;
+
+      const embed = new EmbedBuilder()
+        .setTitle("✅ Verification Required")
+        .setDescription(`Welcome to **${interaction.guild?.name}**!\n\nClick the button below to verify yourself and gain access to the server.`)
+        .setColor(0x57f287);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`verify_${interaction.guildId}`)
+          .setLabel("✅ Verify Me")
+          .setStyle(ButtonStyle.Success)
+      );
+
+      const ch = interaction.guild!.channels.cache.get(channel.id) as TextChannel;
+      await ch.send({ embeds: [embed], components: [row] });
+      await interaction.editReply(`✅ Verification panel posted in <#${channel.id}>. Members will receive **${role.name}** after clicking.`);
+    },
+  },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("verify")
+      .setDescription("Manually verify a member")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+      .addUserOption((o) => o.setName("user").setDescription("User to verify").setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles)) {
+        await interaction.reply({ content: "No permission.", ephemeral: true }); return;
+      }
+      const cfg = getConfig(interaction.guildId!);
+      if (!cfg.verifyRoleId) {
+        await interaction.reply({ content: "❌ No verify role set. Run `/setup_verify` first.", ephemeral: true }); return;
+      }
+      const user = interaction.options.getUser("user", true);
+      const member = await interaction.guild!.members.fetch(user.id).catch(() => null);
+      if (!member) { await interaction.reply({ content: "Member not found.", ephemeral: true }); return; }
+      await member.roles.add(cfg.verifyRoleId);
+      await interaction.reply(`✅ **${user.tag}** has been verified and given the verified role.`);
     },
   },
 ];

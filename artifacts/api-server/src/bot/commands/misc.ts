@@ -472,4 +472,54 @@ export const commands = [
       await interaction.reply(`📺 Looking up **${channel}**...\n\nAdd a \`YOUTUBE_API_KEY\` secret to enable real YouTube channel lookups via the Data API v3.`);
     },
   },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("confess")
+      .setDescription("Send an anonymous confession to the confessions channel")
+      .addStringOption((o) => o.setName("confession").setDescription("Your confession (anonymous)").setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      const cfg = getConfig(interaction.guildId!);
+      if (!cfg.confessChannelId) {
+        await interaction.reply({ content: "❌ No confessions channel set. Ask an admin to run `/set_confess_channel` first.", ephemeral: true });
+        return;
+      }
+      const wait = checkCooldown("confess", interaction.user.id, 60);
+      if (wait > 0) {
+        await interaction.reply({ content: `⏱️ You can confess again in **${wait}s**.`, ephemeral: true });
+        return;
+      }
+      const text = interaction.options.getString("confession", true);
+      const ch = interaction.guild?.channels.cache.get(cfg.confessChannelId) as TextChannel | undefined;
+      if (!ch) {
+        await interaction.reply({ content: "❌ Confessions channel not found.", ephemeral: true });
+        return;
+      }
+      const confessNumber = Math.floor(Math.random() * 9000) + 1000;
+      const embed = new EmbedBuilder()
+        .setTitle(`💬 Anonymous Confession #${confessNumber}`)
+        .setDescription(text)
+        .setColor(0x5865f2)
+        .setFooter({ text: "This confession was sent anonymously." });
+      await ch.send({ embeds: [embed] });
+      await interaction.reply({ content: "✅ Your confession was posted anonymously!", ephemeral: true });
+    },
+  },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("set_confess_channel")
+      .setDescription("Set the channel for anonymous confessions")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .addChannelOption((o) => o.setName("channel").setDescription("Confessions channel").setRequired(true).addChannelTypes(ChannelType.GuildText)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        await interaction.reply({ content: "No permission.", ephemeral: true }); return;
+      }
+      const channel = interaction.options.getChannel("channel", true);
+      const cfg = getConfig(interaction.guildId!);
+      cfg.confessChannelId = channel.id;
+      await interaction.reply(`✅ Confessions channel set to <#${channel.id}>. Users can now use \`/confess\` to post anonymously.`);
+    },
+  },
 ];

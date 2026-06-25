@@ -8,16 +8,19 @@ export interface ServerConfig {
   autoRoleBotId?: string;
   antiNuke: boolean;
   antiRaid: boolean;
+  antiNsfw: boolean;
   blockedWords: string[];
   tempVoiceCategoryId?: string;
   prefix: string;
+  verifyRoleId?: string;
+  confessChannelId?: string;
 }
 
 export const serverConfigs = new Map<string, ServerConfig>();
 
 export function getConfig(guildId: string): ServerConfig {
   if (!serverConfigs.has(guildId)) {
-    serverConfigs.set(guildId, { antiNuke: false, antiRaid: false, blockedWords: [], prefix: "!" });
+    serverConfigs.set(guildId, { antiNuke: false, antiRaid: false, antiNsfw: false, blockedWords: [], prefix: "!" });
   }
   return serverConfigs.get(guildId)!;
 }

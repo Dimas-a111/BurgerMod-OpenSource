@@ -12,7 +12,9 @@ import {
   EmbedBuilder,
   GuildMember,
   PartialGuildMember,
+  MessageFlags,
 } from "discord.js";
+import OpenAI from "openai";
 import { logger } from "../lib/logger";
 import { commands as utilityCommands } from "./commands/utility";
 import { commands as moderationCommands } from "./commands/moderation";
@@ -89,6 +91,30 @@ client.once(Events.ClientReady, async (readyClient) => {
 
 // ── INTERACTION ──────────────────────────────────────────────────────────────
 client.on(Events.InteractionCreate, async (interaction) => {
+  // ── Button: Verify ────────────────────────────────────────────────────────
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith("verify_")) {
+      const guildId = interaction.customId.replace("verify_", "");
+      const cfg = getConfig(guildId);
+      if (!cfg.verifyRoleId) {
+        await interaction.reply({ content: "❌ Verification role not configured.", ephemeral: true });
+        return;
+      }
+      const member = interaction.member as GuildMember;
+      if (member.roles.cache.has(cfg.verifyRoleId)) {
+        await interaction.reply({ content: "✅ You are already verified!", ephemeral: true });
+        return;
+      }
+      try {
+        await member.roles.add(cfg.verifyRoleId);
+        await interaction.reply({ content: "✅ You have been verified! Welcome to the server.", ephemeral: true });
+      } catch {
+        await interaction.reply({ content: "❌ Could not assign role. Make sure the bot's role is above the verify role.", ephemeral: true });
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   logger.info({ name: interaction.commandName }, "Command received");
@@ -179,6 +205,38 @@ client.on(Events.MessageCreate, async (message) => {
       .then((m) => setTimeout(() => m.delete().catch(() => {}), 5000))
       .catch(() => {});
     return;
+  }
+
+  // Anti-NSFW: scan image attachments with OpenAI Vision
+  if (cfg.antiNsfw && message.attachments.size > 0) {
+    const apiKey = process.env["OPENAI_API_KEY"];
+    if (apiKey) {
+      const ai = new OpenAI({ apiKey });
+      for (const [, att] of message.attachments) {
+        if (!att.contentType?.startsWith("image/")) continue;
+        try {
+          const result = await ai.chat.completions.create({
+            model: "gpt-4o-mini",
+            max_tokens: 5,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: "Does this image contain NSFW content (nudity, explicit sexual content, or graphic gore)? Reply only YES or NO." },
+                { type: "image_url", image_url: { url: att.url, detail: "low" } },
+              ],
+            }],
+          });
+          const answer = result.choices[0]?.message?.content?.trim().toUpperCase() ?? "";
+          if (answer.startsWith("YES")) {
+            await message.delete().catch(() => {});
+            message.channel.send(`🔞 ${message.author}, NSFW content is not allowed here. Your message was removed.`)
+              .then((m) => setTimeout(() => m.delete().catch(() => {}), 6000))
+              .catch(() => {});
+            break;
+          }
+        } catch { /* skip on error */ }
+      }
+    }
   }
 
   // AFK: remove if they send a message

@@ -142,4 +142,46 @@ export const commands = [
       await interaction.reply(`\`\`\`\n${text}\n\`\`\``);
     },
   },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("ship")
+      .setDescription("Calculate the compatibility between two users 💘")
+      .addUserOption((o) => o.setName("user_1").setDescription("First user").setRequired(true))
+      .addUserOption((o) => o.setName("user_2").setDescription("Second user").setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      const u1 = interaction.options.getUser("user_1", true);
+      const u2 = interaction.options.getUser("user_2", true);
+
+      // Deterministic score based on both user IDs so the same pair always gets the same score
+      const seed = [...(u1.id + u2.id)].reduce((a, c) => a + c.charCodeAt(0), 0);
+      const score = seed % 101;
+
+      const bar = "💗".repeat(Math.floor(score / 10)) + "🖤".repeat(10 - Math.floor(score / 10));
+
+      const label =
+        score >= 90 ? "Soulmates 💞" :
+        score >= 70 ? "Great match! 💕" :
+        score >= 50 ? "Pretty good 💓" :
+        score >= 30 ? "Meh... 💔" : "Not a chance 💀";
+
+      // Build a ship name from both usernames
+      const n1 = u1.displayName.slice(0, Math.ceil(u1.displayName.length / 2));
+      const n2 = u2.displayName.slice(Math.floor(u2.displayName.length / 2));
+      const shipName = (n1 + n2).replace(/[^a-zA-Z]/g, "");
+
+      const embed = new EmbedBuilder()
+        .setTitle("💘 Ship-O-Meter")
+        .setColor(0xff73fa)
+        .addFields(
+          { name: "Couple", value: `${u1} ❤️ ${u2}`, inline: false },
+          { name: "Ship Name", value: `**${shipName || "Mystery"}**`, inline: true },
+          { name: "Score", value: `**${score}%**`, inline: true },
+          { name: "Verdict", value: label, inline: true },
+          { name: "Compatibility", value: bar, inline: false }
+        );
+
+      await interaction.reply({ embeds: [embed] });
+    },
+  },
 ];
