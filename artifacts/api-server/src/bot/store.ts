@@ -58,3 +58,21 @@ export const notifyTiktok = new Map<string, NotifyConfig>();
 export const notifyTwitter = new Map<string, NotifyConfig>();
 
 export const trackedUsers = new Map<string, { guildId: string; channelId: string; watcherId: string }>(); // targetId -> config
+
+// ── SNIPE ─────────────────────────────────────────────────────────────────────
+export interface SnipeEntry {
+  content: string;
+  authorId: string;
+  authorTag: string;
+  authorAvatar: string | null;
+  type: "deleted" | "edited";
+  originalContent?: string; // for edited: before-value
+  timestamp: number;
+}
+export const snipeStore = new Map<string, SnipeEntry>(); // channelId -> latest snipe
+
+// ── USERPHONE ─────────────────────────────────────────────────────────────────
+export interface UserphoneSession { channelId: string; guildId: string; userId: string; guildName: string; }
+export let userphoneWaiting: UserphoneSession | null = null;
+export const userphoneConnections = new Map<string, string>(); // channelId <-> channelId (both directions stored)
+export function setUserphoneWaiting(s: UserphoneSession | null): void { userphoneWaiting = s; }

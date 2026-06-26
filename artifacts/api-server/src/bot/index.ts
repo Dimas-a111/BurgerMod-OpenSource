@@ -33,6 +33,10 @@ import {
   reactionRoles,
   stay247,
   trackedUsers,
+  snipeStore,
+  userphoneConnections,
+  userphoneWaiting,
+  setUserphoneWaiting,
 } from "./store";
 import { joinVoiceChannel } from "@discordjs/voice";
 
@@ -262,6 +266,20 @@ client.on(Events.MessageCreate, async (message) => {
     }
   }
 
+  // Userphone: forward messages between connected channels
+  if (userphoneConnections.has(message.channelId)) {
+    const targetId = userphoneConnections.get(message.channelId)!;
+    const targetChannel = client.channels.cache.get(targetId) as TextChannel | undefined;
+    if (targetChannel) {
+      const attachmentUrls = message.attachments.map((a) => a.url).join("\n");
+      const body = [
+        `📞 **${message.author.tag}:** ${message.content || ""}`,
+        attachmentUrls,
+      ].filter(Boolean).join("\n").slice(0, 2000);
+      targetChannel.send(body).catch(() => {});
+    }
+  }
+
   // XP system (anti-farm: 1 XP per minute per user)
   const xp = getXP(message.guild.id, message.author.id);
   const now = Date.now();
@@ -337,6 +355,35 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     .setColor(0xff73fa)
     .setThumbnail(newMember.user.displayAvatarURL());
   ch.send({ embeds: [embed] }).catch(() => {});
+});
+
+// ── SNIPE: capture deleted messages ───────────────────────────────────────────
+client.on(Events.MessageDelete, (message) => {
+  if (message.author?.bot || !message.guild) return;
+  if (!message.content && !message.author) return;
+  snipeStore.set(message.channelId, {
+    content: message.content ?? "(no text)",
+    authorId: message.author?.id ?? "unknown",
+    authorTag: message.author?.tag ?? "Unknown",
+    authorAvatar: message.author?.displayAvatarURL() ?? null,
+    type: "deleted",
+    timestamp: Date.now(),
+  });
+});
+
+// ── SNIPE: capture edited messages ────────────────────────────────────────────
+client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+  if (oldMessage.author?.bot || !oldMessage.guild) return;
+  if (!oldMessage.content || oldMessage.content === newMessage.content) return;
+  snipeStore.set(oldMessage.channelId, {
+    content: newMessage.content ?? oldMessage.content ?? "(no text)",
+    authorId: oldMessage.author?.id ?? "unknown",
+    authorTag: oldMessage.author?.tag ?? "Unknown",
+    authorAvatar: oldMessage.author?.displayAvatarURL() ?? null,
+    type: "edited",
+    originalContent: oldMessage.content,
+    timestamp: Date.now(),
+  });
 });
 
 // ── PRESENCE (user tracking) ──────────────────────────────────────────────────

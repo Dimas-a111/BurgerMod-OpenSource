@@ -2,7 +2,9 @@ import {
   ChatInputCommandInteraction,
   EmbedBuilder,
   SlashCommandBuilder,
+  TextChannel,
 } from "discord.js";
+import { snipeStore, userphoneConnections, userphoneWaiting, setUserphoneWaiting } from "../store";
 
 const EIGHT_BALL = ["It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.", "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.", "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.", "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.", "Don't count on it.", "My reply is no.", "My sources say no.", "Outlook not so good.", "Very doubtful."];
 
@@ -182,6 +184,101 @@ export const commands = [
         );
 
       await interaction.reply({ embeds: [embed] });
+    },
+  },
+
+  // ── SNIPE ──────────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("snipe")
+      .setDescription("Show the last deleted or edited message in this channel")
+      .addStringOption((o) =>
+        o.setName("type")
+          .setDescription("What to snipe (default: deleted)")
+          .addChoices(
+            { name: "Deleted", value: "deleted" },
+            { name: "Edited", value: "edited" },
+          ))
+      .addUserOption((o) => o.setName("user").setDescription("Filter by user")),
+    async execute(interaction: ChatInputCommandInteraction) {
+      const type = (interaction.options.getString("type") ?? "deleted") as "deleted" | "edited";
+      const filterUser = interaction.options.getUser("user");
+
+      const entry = snipeStore.get(interaction.channelId);
+
+      if (!entry || entry.type !== type || (filterUser && entry.authorId !== filterUser.id)) {
+        await interaction.reply({ content: `🔍 No recent ${type} messages found${filterUser ? ` from ${filterUser}` : ""} in this channel.`, flags: 64 });
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(type === "deleted" ? 0xed4245 : 0xfaa61a)
+        .setAuthor({ name: entry.authorTag, iconURL: entry.authorAvatar ?? undefined })
+        .setTimestamp(entry.timestamp);
+
+      if (type === "deleted") {
+        embed.setTitle("🗑️ Sniped Message")
+          .setDescription(entry.content.slice(0, 4000));
+      } else {
+        embed.setTitle("✏️ Edit Sniped")
+          .addFields(
+            { name: "Before", value: (entry.originalContent ?? "(unknown)").slice(0, 1024) },
+            { name: "After", value: entry.content.slice(0, 1024) },
+          );
+      }
+
+      await interaction.reply({ embeds: [embed] });
+    },
+  },
+
+  // ── USERPHONE ──────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("userphone")
+      .setDescription("Connect this channel to a random channel in another server for a live chat — run again to hang up"),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.guild) { await interaction.reply({ content: "Server only.", flags: 64 }); return; }
+
+      const myChannel = interaction.channelId;
+
+      // If already connected → hang up
+      if (userphoneConnections.has(myChannel)) {
+        const otherId = userphoneConnections.get(myChannel)!;
+        userphoneConnections.delete(myChannel);
+        userphoneConnections.delete(otherId);
+
+        await interaction.reply("📵 **Userphone:** Call ended. Goodbye!");
+
+        const otherChannel = interaction.client.channels.cache.get(otherId) as TextChannel | undefined;
+        otherChannel?.send("📵 **Userphone:** The other server hung up. Call ended.").catch(() => {});
+        return;
+      }
+
+      // If already in waiting queue → cancel wait
+      if (userphoneWaiting && userphoneWaiting.channelId === myChannel) {
+        setUserphoneWaiting(null);
+        await interaction.reply({ content: "📵 Cancelled — no longer waiting for a connection.", flags: 64 });
+        return;
+      }
+
+      // If someone else is waiting → connect
+      if (userphoneWaiting && userphoneWaiting.channelId !== myChannel) {
+        const other = userphoneWaiting;
+        setUserphoneWaiting(null);
+
+        userphoneConnections.set(myChannel, other.channelId);
+        userphoneConnections.set(other.channelId, myChannel);
+
+        await interaction.reply(`📞 **Userphone:** Connected to **${other.guildName}**! Say hi. Run \`/userphone\` again to hang up.`);
+
+        const otherChannel = interaction.client.channels.cache.get(other.channelId) as TextChannel | undefined;
+        otherChannel?.send(`📞 **Userphone:** Connected to **${interaction.guild.name}**! Say hi. Run \`/userphone\` again to hang up.`).catch(() => {});
+        return;
+      }
+
+      // No one waiting → join the queue
+      setUserphoneWaiting({ channelId: myChannel, guildId: interaction.guild.id, userId: interaction.user.id, guildName: interaction.guild.name });
+      await interaction.reply("📳 **Userphone:** Waiting for another server to pick up… Run `/userphone` again to cancel.");
     },
   },
 ];
