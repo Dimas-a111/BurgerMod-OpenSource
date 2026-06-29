@@ -420,7 +420,7 @@ export const commands = [
       await interaction.deferReply();
       try {
         const response = await ai.images.generate({
-          model: "dall-e-3",
+          model: "dall-e-2",
           prompt,
           n: 1,
           size: "1024x1024",
