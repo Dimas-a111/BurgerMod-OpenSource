@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder,
   TextChannel,
 } from "discord.js";
-import { snipeStore, userphoneConnections, userphoneWaiting, setUserphoneWaiting } from "../store";
+import { snipeStore, userphoneConnections, userphoneWaiting, setUserphoneWaiting, mathGames } from "../store";
 
 const EIGHT_BALL = ["It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.", "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.", "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.", "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.", "Don't count on it.", "My reply is no.", "My sources say no.", "Outlook not so good.", "Very doubtful."];
 
@@ -279,6 +279,144 @@ export const commands = [
       // No one waiting → join the queue
       setUserphoneWaiting({ channelId: myChannel, guildId: interaction.guild.id, userId: interaction.user.id, guildName: interaction.guild.name });
       await interaction.reply("📳 **Userphone:** Waiting for another server to pick up… Run `/userphone` again to cancel.");
+    },
+  },
+
+  // ── FISHING ────────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("fishing")
+      .setDescription("Cast your line and see what you catch! 🎣"),
+    async execute(interaction: ChatInputCommandInteraction) {
+      await interaction.deferReply();
+      await new Promise((res) => setTimeout(res, 1500 + Math.random() * 2000));
+
+      const CATCHES = [
+        { emoji: "🐟", name: "Sardine",      rarity: "Common",    color: 0x99ccff, minW: 0.1,   maxW: 0.5   },
+        { emoji: "🐠", name: "Tropical Fish", rarity: "Common",   color: 0xff9944, minW: 0.2,   maxW: 0.8   },
+        { emoji: "🦐", name: "Shrimp",        rarity: "Common",   color: 0xffbbaa, minW: 0.05,  maxW: 0.2   },
+        { emoji: "🐡", name: "Blowfish",      rarity: "Uncommon", color: 0xffcc00, minW: 0.5,   maxW: 2.0   },
+        { emoji: "🦑", name: "Squid",         rarity: "Uncommon", color: 0xcc99ff, minW: 0.5,   maxW: 3.0   },
+        { emoji: "🦞", name: "Lobster",       rarity: "Rare",     color: 0xff4444, minW: 0.5,   maxW: 2.5   },
+        { emoji: "🐙", name: "Octopus",       rarity: "Rare",     color: 0xdd44bb, minW: 1.0,   maxW: 5.0   },
+        { emoji: "🦈", name: "Shark",         rarity: "Epic",     color: 0x556677, minW: 80,    maxW: 300   },
+        { emoji: "🐬", name: "Dolphin",       rarity: "Epic",     color: 0x66bbff, minW: 100,   maxW: 250   },
+        { emoji: "🐋", name: "Blue Whale",    rarity: "Legendary",color: 0x0033ff, minW: 50000, maxW: 150000},
+        { emoji: "👟", name: "Old Boot",      rarity: "Trash",    color: 0x888888, minW: 0.4,   maxW: 0.4   },
+        { emoji: "🗑️", name: "Trash Bag",    rarity: "Trash",    color: 0x666666, minW: 1.0,   maxW: 3.0   },
+      ] as const;
+
+      const roll = Math.random() * 100;
+      let fish: (typeof CATCHES)[number];
+      if      (roll < 40) fish = CATCHES[Math.floor(Math.random() * 3)]!;       // Common  (0-2)
+      else if (roll < 60) fish = CATCHES[3 + Math.floor(Math.random() * 2)]!;   // Uncommon(3-4)
+      else if (roll < 75) fish = CATCHES[5 + Math.floor(Math.random() * 2)]!;   // Rare    (5-6)
+      else if (roll < 87) fish = CATCHES[7 + Math.floor(Math.random() * 2)]!;   // Epic    (7-8)
+      else if (roll < 92) fish = CATCHES[9]!;                                    // Legendary(9)
+      else                fish = CATCHES[10 + Math.floor(Math.random() * 2)]!;   // Trash  (10-11)
+
+      const weight = (fish.minW + Math.random() * (fish.maxW - fish.minW)).toFixed(2);
+      const rarityIcon: Record<string, string> = { Common:"⚪", Uncommon:"🟢", Rare:"🔵", Epic:"🟣", Legendary:"🟡", Trash:"🟤" };
+
+      const embed = new EmbedBuilder()
+        .setColor(fish.color)
+        .setTitle(
+          fish.rarity === "Legendary" ? `🎉 LEGENDARY CATCH! ${fish.emoji}` :
+          fish.rarity === "Trash"     ? `😬 You reeled in some trash…`       :
+          `🎣 You caught something!`
+        )
+        .addFields(
+          { name: "Catch",  value: `${fish.emoji} **${fish.name}**`,        inline: true },
+          { name: "Rarity", value: `${rarityIcon[fish.rarity]} ${fish.rarity}`, inline: true },
+          { name: "Weight", value: `**${weight} kg**`,                      inline: true },
+        )
+        .setFooter({ text: `Fisherman: ${interaction.user.tag}` });
+
+      await interaction.editReply({ embeds: [embed] });
+    },
+  },
+
+  // ── MATHGAME ───────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("mathgame")
+      .setDescription("Start a math challenge — answer in chat before time runs out! ⏱️"),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.guild) { await interaction.reply({ content: "Server only.", flags: 64 }); return; }
+
+      if (mathGames.has(interaction.channelId)) {
+        await interaction.reply({ content: "⚠️ A math game is already running in this channel. Use `/mathstop` to end it.", flags: 64 });
+        return;
+      }
+
+      // Generate a random problem
+      const ops  = ["+", "-", "×", "÷"] as const;
+      const op   = ops[Math.floor(Math.random() * ops.length)]!;
+      let a: number, b: number, answer: number;
+      do {
+        a = Math.floor(Math.random() * 20) + 1;
+        b = Math.floor(Math.random() * 20) + 1;
+        if      (op === "+") { answer = a + b; }
+        else if (op === "-") { answer = a - b; }
+        else if (op === "×") { answer = a * b; }
+        else                 { answer = a;  b = Math.floor(Math.random() * 9) + 1; a = answer = b * (Math.floor(Math.random() * 10) + 1); }
+      } while (op === "÷" && a % b !== 0); // ensure whole-number division
+
+      if (op === "÷") { answer = a / b; }
+
+      const embed = new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle("🧮 Math Game!")
+        .setDescription(`What is **${op === "÷" ? `${a} ÷ ${b}` : `${a} ${op} ${b}`}**?\n\nType your answer in chat. You have **30 seconds!**`)
+        .setFooter({ text: `Started by ${interaction.user.tag}` });
+
+      await interaction.reply({ embeds: [embed] });
+
+      const channel = interaction.channel as TextChannel;
+      const collector = channel.createMessageCollector({ time: 30000 });
+
+      mathGames.set(interaction.channelId, {
+        answer,
+        userId: interaction.user.id,
+        stop: () => collector.stop("manual"),
+      });
+
+      collector.on("collect", async (msg) => {
+        const guess = parseFloat(msg.content.trim());
+        if (isNaN(guess)) return;
+        if (guess === answer) {
+          mathGames.delete(interaction.channelId);
+          collector.stop("correct");
+          await msg.reply(`✅ **${msg.author.tag}** got it! The answer was **${answer}**. 🎉`);
+        }
+      });
+
+      collector.on("end", async (_collected, reason) => {
+        mathGames.delete(interaction.channelId);
+        if (reason === "correct" || reason === "manual") return;
+        channel.send(`⏰ Time's up! Nobody got it. The answer was **${answer}**.`).catch(() => {});
+      });
+    },
+  },
+
+  // ── MATHSTOP ───────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("mathstop")
+      .setDescription("Stop the math game running in this channel (only the person who started it)"),
+    async execute(interaction: ChatInputCommandInteraction) {
+      const game = mathGames.get(interaction.channelId);
+      if (!game) {
+        await interaction.reply({ content: "❌ No math game is running in this channel.", flags: 64 });
+        return;
+      }
+      if (game.userId !== interaction.user.id) {
+        await interaction.reply({ content: "❌ Only the person who started the game can stop it.", flags: 64 });
+        return;
+      }
+      game.stop();
+      mathGames.delete(interaction.channelId);
+      await interaction.reply(`🛑 Math game stopped by ${interaction.user}. The answer was **${game.answer}**.`);
     },
   },
 ];

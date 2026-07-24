@@ -76,3 +76,6 @@ export interface UserphoneSession { channelId: string; guildId: string; userId: 
 export let userphoneWaiting: UserphoneSession | null = null;
 export const userphoneConnections = new Map<string, string>(); // channelId <-> channelId (both directions stored)
 export function setUserphoneWaiting(s: UserphoneSession | null): void { userphoneWaiting = s; }
+
+// ── MATH GAME ─────────────────────────────────────────────────────────────────
+export const mathGames = new Map<string, { answer: number; userId: string; stop: () => void }>();

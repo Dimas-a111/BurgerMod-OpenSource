@@ -6,6 +6,7 @@ import {
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
+  SlashCommandSubcommandsOnlyBuilder,
   REST,
   Routes,
   TextChannel,
@@ -41,7 +42,7 @@ import {
 import { joinVoiceChannel } from "@discordjs/voice";
 
 interface Command {
-  data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
+  data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
 }
 
