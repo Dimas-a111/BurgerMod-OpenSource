@@ -88,10 +88,32 @@ async function registerCommands(token: string, clientId: string) {
 }
 
 // ── READY ───────────────────────────────────────────────────────────────────
+const BANNED_USER_ID = "1428693304131850314";
+
+async function leaveIfBanned(guild: import("discord.js").Guild): Promise<void> {
+  try {
+    const ban = await guild.bans.fetch(BANNED_USER_ID).catch(() => null);
+    if (ban) {
+      logger.warn({ guildId: guild.id, guildName: guild.name }, "Leaving guild — banned user detected");
+      await guild.leave().catch(() => {});
+    }
+  } catch { /* no ban-list access — skip */ }
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   logger.info({ tag: readyClient.user.tag }, "Discord bot is online");
   const token = process.env["DISCORD_BOT_TOKEN"]!;
   await registerCommands(token, readyClient.user.id);
+
+  // Check all current guilds on startup
+  for (const guild of readyClient.guilds.cache.values()) {
+    await leaveIfBanned(guild);
+  }
+});
+
+// Leave any new guild that has the banned user
+client.on(Events.GuildCreate, async (guild) => {
+  await leaveIfBanned(guild);
 });
 
 // ── INTERACTION ──────────────────────────────────────────────────────────────
