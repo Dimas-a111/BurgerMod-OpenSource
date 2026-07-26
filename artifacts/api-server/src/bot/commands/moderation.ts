@@ -308,4 +308,78 @@ export const commands = [
       await interaction.editReply({ embeds: [embed] });
     },
   },
+
+  // ── LOCKDOWN ───────────────────────────────────────────────────────────────
+  {
+    data: new SlashCommandBuilder()
+      .setName("lockdown")
+      .setDescription("Lock or unlock all text channels in the server instantly")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .addStringOption((o) =>
+        o.setName("action")
+          .setDescription("What to do")
+          .setRequired(true)
+          .addChoices(
+            { name: "🔒 Lock — block everyone from sending messages", value: "lock" },
+            { name: "🔓 Unlock — restore normal permissions", value: "unlock" },
+          )
+      )
+      .addStringOption((o) =>
+        o.setName("reason")
+          .setDescription("Reason (shown in audit log)")
+          .setRequired(false)
+      ),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        await interaction.reply({ content: "You need **Manage Channels** permission.", ephemeral: true }); return;
+      }
+      const guild = interaction.guild;
+      if (!guild) { await interaction.reply({ content: "Server only.", ephemeral: true }); return; }
+
+      const action = interaction.options.getString("action", true) as "lock" | "unlock";
+      const reason = interaction.options.getString("reason") ?? (action === "lock" ? "Server lockdown" : "Lockdown lifted");
+      const isLock = action === "lock";
+
+      await interaction.deferReply();
+
+      const everyoneRole = guild.roles.everyone;
+      const textChannels = guild.channels.cache.filter(
+        (ch) => ch.type === 0 /* GuildText */ || ch.type === 5 /* Announcement */
+      );
+
+      let success = 0;
+      let skipped = 0;
+
+      for (const [, channel] of textChannels) {
+        try {
+          if (channel.isTextBased() && "permissionOverwrites" in channel) {
+            await channel.permissionOverwrites.edit(
+              everyoneRole,
+              { SendMessages: isLock ? false : null },
+              { reason }
+            );
+            success++;
+          }
+        } catch {
+          skipped++;
+        }
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(isLock ? 0xed4245 : 0x57f287)
+        .setTitle(isLock ? "🔒 Server Locked Down" : "🔓 Lockdown Lifted")
+        .setDescription(isLock
+          ? "Everyone has been blocked from sending messages in all text channels."
+          : "Normal message permissions have been restored in all text channels.")
+        .addFields(
+          { name: "Channels affected", value: `${success}`, inline: true },
+          { name: "Skipped (no access)", value: `${skipped}`, inline: true },
+          { name: "Reason", value: reason, inline: false },
+        )
+        .setFooter({ text: `By ${interaction.user.tag}` })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    },
+  },
 ];
