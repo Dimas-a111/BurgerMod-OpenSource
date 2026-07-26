@@ -336,87 +336,65 @@ export const commands = [
     },
   },
 
-  // ── MATHGAME ───────────────────────────────────────────────────────────────
+  // ── MATHGAME (start / stop subcommands) ────────────────────────────────────
   {
     data: new SlashCommandBuilder()
       .setName("mathgame")
-      .setDescription("Start a math challenge — answer in chat before time runs out! ⏱️"),
+      .setDescription("Math challenge game")
+      .addSubcommand((sub) =>
+        sub.setName("start").setDescription("Start a math challenge — answer in chat before time runs out! ⏱️")
+      )
+      .addSubcommand((sub) =>
+        sub.setName("stop").setDescription("Stop the math game in this channel (only the person who started it)")
+      ),
     async execute(interaction: ChatInputCommandInteraction) {
-      if (!interaction.guild) { await interaction.reply({ content: "Server only.", flags: 64 }); return; }
+      const sub = interaction.options.getSubcommand();
 
-      if (mathGames.has(interaction.channelId)) {
-        await interaction.reply({ content: "⚠️ A math game is already running in this channel. Use `/mathstop` to end it.", flags: 64 });
-        return;
-      }
-
-      // Generate a random problem
-      const ops  = ["+", "-", "×", "÷"] as const;
-      const op   = ops[Math.floor(Math.random() * ops.length)]!;
-      let a: number, b: number, answer: number;
-      do {
-        a = Math.floor(Math.random() * 20) + 1;
-        b = Math.floor(Math.random() * 20) + 1;
-        if      (op === "+") { answer = a + b; }
-        else if (op === "-") { answer = a - b; }
-        else if (op === "×") { answer = a * b; }
-        else                 { answer = a;  b = Math.floor(Math.random() * 9) + 1; a = answer = b * (Math.floor(Math.random() * 10) + 1); }
-      } while (op === "÷" && a % b !== 0); // ensure whole-number division
-
-      if (op === "÷") { answer = a / b; }
-
-      const embed = new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle("🧮 Math Game!")
-        .setDescription(`What is **${op === "÷" ? `${a} ÷ ${b}` : `${a} ${op} ${b}`}**?\n\nType your answer in chat. You have **30 seconds!**`)
-        .setFooter({ text: `Started by ${interaction.user.tag}` });
-
-      await interaction.reply({ embeds: [embed] });
-
-      const channel = interaction.channel as TextChannel;
-      const collector = channel.createMessageCollector({ time: 30000 });
-
-      mathGames.set(interaction.channelId, {
-        answer,
-        userId: interaction.user.id,
-        stop: () => collector.stop("manual"),
-      });
-
-      collector.on("collect", async (msg) => {
-        const guess = parseFloat(msg.content.trim());
-        if (isNaN(guess)) return;
-        if (guess === answer) {
-          mathGames.delete(interaction.channelId);
-          collector.stop("correct");
-          await msg.reply(`✅ **${msg.author.tag}** got it! The answer was **${answer}**. 🎉`);
+      if (sub === "start") {
+        if (!interaction.guild) { await interaction.reply({ content: "Server only.", flags: 64 }); return; }
+        if (mathGames.has(interaction.channelId)) {
+          await interaction.reply({ content: "⚠️ A math game is already running here. Use `/mathgame stop` to end it.", flags: 64 });
+          return;
         }
-      });
+        const ops = ["+", "-", "×", "÷"] as const;
+        const op  = ops[Math.floor(Math.random() * ops.length)]!;
+        let a: number, b: number, answer: number;
+        do {
+          a = Math.floor(Math.random() * 20) + 1;
+          b = Math.floor(Math.random() * 20) + 1;
+          if      (op === "+") { answer = a + b; }
+          else if (op === "-") { answer = a - b; }
+          else if (op === "×") { answer = a * b; }
+          else                 { b = Math.floor(Math.random() * 9) + 1; a = b * (Math.floor(Math.random() * 10) + 1); answer = a / b; }
+        } while (op === "÷" && a % b !== 0);
+        const embed = new EmbedBuilder()
+          .setColor(0xfaa61a)
+          .setTitle("🧮 Math Game!")
+          .setDescription(`What is **${op === "÷" ? `${a} ÷ ${b}` : `${a} ${op} ${b}`}**?\n\nType your answer in chat. You have **30 seconds!**`)
+          .setFooter({ text: `Started by ${interaction.user.tag}` });
+        await interaction.reply({ embeds: [embed] });
+        const channel = interaction.channel as TextChannel;
+        const collector = channel.createMessageCollector({ time: 30000 });
+        mathGames.set(interaction.channelId, { answer, userId: interaction.user.id, stop: () => collector.stop("manual") });
+        collector.on("collect", async (msg) => {
+          const guess = parseFloat(msg.content.trim());
+          if (isNaN(guess)) return;
+          if (guess === answer) { mathGames.delete(interaction.channelId); collector.stop("correct"); await msg.reply(`✅ **${msg.author.tag}** got it! The answer was **${answer}**. 🎉`); }
+        });
+        collector.on("end", async (_col, reason) => {
+          mathGames.delete(interaction.channelId);
+          if (reason === "correct" || reason === "manual") return;
+          channel.send(`⏰ Time's up! Nobody got it. The answer was **${answer}**.`).catch(() => {});
+        });
 
-      collector.on("end", async (_collected, reason) => {
+      } else {
+        const game = mathGames.get(interaction.channelId);
+        if (!game) { await interaction.reply({ content: "❌ No math game is running in this channel.", flags: 64 }); return; }
+        if (game.userId !== interaction.user.id) { await interaction.reply({ content: "❌ Only the person who started the game can stop it.", flags: 64 }); return; }
+        game.stop();
         mathGames.delete(interaction.channelId);
-        if (reason === "correct" || reason === "manual") return;
-        channel.send(`⏰ Time's up! Nobody got it. The answer was **${answer}**.`).catch(() => {});
-      });
-    },
-  },
-
-  // ── MATHSTOP ───────────────────────────────────────────────────────────────
-  {
-    data: new SlashCommandBuilder()
-      .setName("mathstop")
-      .setDescription("Stop the math game running in this channel (only the person who started it)"),
-    async execute(interaction: ChatInputCommandInteraction) {
-      const game = mathGames.get(interaction.channelId);
-      if (!game) {
-        await interaction.reply({ content: "❌ No math game is running in this channel.", flags: 64 });
-        return;
+        await interaction.reply(`🛑 Math game stopped by ${interaction.user}. The answer was **${game.answer}**.`);
       }
-      if (game.userId !== interaction.user.id) {
-        await interaction.reply({ content: "❌ Only the person who started the game can stop it.", flags: 64 });
-        return;
-      }
-      game.stop();
-      mathGames.delete(interaction.channelId);
-      await interaction.reply(`🛑 Math game stopped by ${interaction.user}. The answer was **${game.answer}**.`);
     },
   },
 ];
