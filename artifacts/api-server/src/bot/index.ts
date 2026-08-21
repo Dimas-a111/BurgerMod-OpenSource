@@ -38,6 +38,7 @@ import {
   userphoneConnections,
   userphoneWaiting,
   setUserphoneWaiting,
+  honeypots,
 } from "./store";
 import { joinVoiceChannel } from "@discordjs/voice";
 
@@ -224,6 +225,51 @@ client.on(Events.MessageCreate, async (message) => {
 
   const cfg = getConfig(message.guild.id);
   const content = message.content.toLowerCase();
+
+  // Honeypot: remove the message, apply the configured punishment, and log it.
+  const honeypot = honeypots.get(message.guild.id);
+  if (honeypot && message.channelId === honeypot.channelId) {
+    const member = message.member;
+    await message.delete().catch(() => {});
+
+    let action = "message deleted";
+    if (member) {
+      try {
+        if (honeypot.punishment === "warn") {
+          await member.send(`You triggered the honeypot in **${message.guild.name}**. Please do not post in that channel.`).catch(() => {});
+          action = "warning DM sent";
+        } else if (honeypot.punishment === "timeout" && member.moderatable) {
+          await member.timeout(10 * 60 * 1000, "Honeypot triggered");
+          action = "timed out for 10 minutes";
+        } else if (honeypot.punishment === "kick" && member.kickable) {
+          await member.kick("Honeypot triggered");
+          action = "kicked";
+        } else if (honeypot.punishment === "ban" && member.bannable) {
+          await member.ban({ reason: "Honeypot triggered" });
+          action = "banned";
+        } else if (honeypot.punishment !== "delete") {
+          action = `${honeypot.punishment} could not be applied (insufficient bot permissions)`;
+        }
+      } catch {
+        action = `${honeypot.punishment} failed`;
+      }
+    }
+
+    const logsChannel = message.guild.channels.cache.get(honeypot.logsChannelId);
+    if (logsChannel instanceof TextChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle("Honeypot Triggered")
+        .setColor(0xed4245)
+        .addFields(
+          { name: "User", value: `${message.author.tag} (<@${message.author.id}>)`, inline: true },
+          { name: "Channel", value: `<#${honeypot.channelId}>`, inline: true },
+          { name: "Action", value: action, inline: false },
+        )
+        .setTimestamp();
+      logsChannel.send({ embeds: [embed] }).catch(() => {});
+    }
+    return;
+  }
 
   // Blocked words
   if (cfg.blockedWords.some((w) => content.includes(w))) {

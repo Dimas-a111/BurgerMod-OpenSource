@@ -79,3 +79,12 @@ export function setUserphoneWaiting(s: UserphoneSession | null): void { userphon
 
 // ── MATH GAME ─────────────────────────────────────────────────────────────────
 export const mathGames = new Map<string, { answer: number; userId: string; stop: () => void }>();
+
+// ── HONEYPOT ───────────────────────────────────────────────────────────────────
+export type HoneypotPunishment = "delete" | "warn" | "timeout" | "kick" | "ban";
+export interface HoneypotConfig {
+  channelId: string;
+  punishment: HoneypotPunishment;
+  logsChannelId: string;
+}
+export const honeypots = new Map<string, HoneypotConfig>(); // guildId -> config

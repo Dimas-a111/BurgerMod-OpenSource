@@ -5,7 +5,9 @@ import {
   SlashCommandBuilder,
   TextChannel,
   Collection,
+  ChannelType,
 } from "discord.js";
+import { honeypots, HoneypotPunishment } from "../store";
 
 const warnings = new Collection<string, { reason: string; by: string; at: number }[]>();
 
@@ -260,6 +262,57 @@ export const commands = [
       const seconds = interaction.options.getInteger("seconds", true);
       await channel.setRateLimitPerUser(seconds);
       await interaction.reply(seconds === 0 ? "⏩ Slowmode disabled." : `🐢 Slowmode set to **${seconds}s**.`);
+    },
+  },
+
+  {
+    data: new SlashCommandBuilder()
+      .setName("honeypot")
+      .setDescription("Configure a trap channel that punishes anyone who sends a message there")
+      .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
+      .addChannelOption((o) => o
+        .setName("channel")
+        .setDescription("The text channel to use as the trap")
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(true))
+      .addStringOption((o) => o
+        .setName("punishment")
+        .setDescription("What happens to someone who posts in the trap")
+        .setRequired(true)
+        .addChoices(
+          { name: "Delete message only", value: "delete" },
+          { name: "Warn by DM", value: "warn" },
+          { name: "Timeout for 10 minutes", value: "timeout" },
+          { name: "Kick from server", value: "kick" },
+          { name: "Ban from server", value: "ban" },
+        ))
+      .addChannelOption((o) => o
+        .setName("logs")
+        .setDescription("Text channel where punishments are recorded")
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(true)),
+    async execute(interaction: ChatInputCommandInteraction) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
+        await interaction.reply({ content: "You don't have permission to configure a honeypot.", ephemeral: true }); return;
+      }
+      if (!interaction.guild) {
+        await interaction.reply({ content: "Server only.", ephemeral: true }); return;
+      }
+      const channel = interaction.options.getChannel("channel", true);
+      const logs = interaction.options.getChannel("logs", true);
+      const punishment = interaction.options.getString("punishment", true) as HoneypotPunishment;
+      if (channel.type !== ChannelType.GuildText || logs.type !== ChannelType.GuildText) {
+        await interaction.reply({ content: "Both channels must be text channels.", ephemeral: true }); return;
+      }
+      honeypots.set(interaction.guild.id, {
+        channelId: channel.id,
+        punishment,
+        logsChannelId: logs.id,
+      });
+      await interaction.reply({
+        content: `✅ Honeypot enabled in <#${channel.id}>. Punishment: **${punishment}**. Logs: <#${logs.id}>.`,
+        ephemeral: true,
+      });
     },
   },
 
